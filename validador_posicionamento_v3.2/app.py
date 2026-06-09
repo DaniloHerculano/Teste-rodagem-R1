@@ -40,7 +40,7 @@ with st.sidebar:
     raio2 = st.number_input("Raio 2 (km)", value=3.0, step=0.5, min_value=0.1)
     raio3 = st.number_input("Raio 3 (km)", value=5.0, step=0.5, min_value=0.1)
     st.markdown("---")
-    st.markdown('<span style="font-size:.68rem;color:#4a5568">Stoneridge Brasil · v0.2.1</span>',
+    st.markdown('<span style="font-size:.68rem;color:#4a5568">Stoneridge Brasil · v3.4</span>',
                 unsafe_allow_html=True)
 
 # ── AJUDA RÁPIDA ──────────────────────────────────────────────────────────────
@@ -53,10 +53,10 @@ st.caption("Envie o **CSV** (log técnico) e/ou o **XLS** (posição convertida)
            "rastreador. Arquivos com o mesmo nome (extensão diferente) são unidos automaticamente. "
            "Pode subir só um dos dois — o app mostra o que for possível com o que tiver.")
 arquivos = st.file_uploader("Arquivos dos rastreadores",
-    type=["csv", "xls", "xlsx"], accept_multiple_files=True)
+    type=["csv", "xls", "xlsx", "kml"], accept_multiple_files=True)
 
 if not arquivos:
-    st.info("⬆️  Envie os arquivos (CSV e/ou XLS) para iniciar a análise. "
+    st.info("⬆️  Envie os arquivos (CSV, XLS e/ou KML) para iniciar a análise. "
             "Abra o guia acima se for sua primeira vez.")
     st.stop()
 
@@ -65,14 +65,20 @@ grupos = {}
 for arq in arquivos:
     base = nome_base(arq.name)
     ext = arq.name.lower().rsplit(".", 1)[-1]
-    grupos.setdefault(base, {"csv": None, "xls": None})
-    grupos[base]["csv" if ext == "csv" else "xls"] = arq
+    grupos.setdefault(base, {"csv": None, "xls": None, "kml": None})
+    if ext == "csv":
+        grupos[base]["csv"] = arq
+    elif ext == "kml":
+        grupos[base]["kml"] = arq
+    else:  # xls, xlsx
+        grupos[base]["xls"] = arq
 
 # Consolida cada equipamento
 dados = []
 for base, fontes in grupos.items():
     try:
-        info = consolidar_equipamento(base, fontes["csv"], fontes["xls"], tol_fusao=tol_fusao)
+        info = consolidar_equipamento(base, fontes["csv"], fontes["xls"],
+                                      kml_file=fontes["kml"], tol_fusao=tol_fusao)
         dados.append(info)
     except Exception as e:
         st.error(str(e))
@@ -148,21 +154,22 @@ if vazios:
                ". Verifique se há sobreposição de horário ou aumente a tolerância.")
 
 # ── ABAS ──────────────────────────────────────────────────────────────────────
-abas = st.tabs(["📊 Visão Geral", "🗺 Mapa", "📍 Precisão GPS", "📶 Rede & Operadora",
-    "🛰 Qualidade GPS", "🚗 Movimento", "🔋 Bateria", "⏱ Latência", "📋 Dados & Export",
-    "❓ Como Usar"])
+abas = st.tabs(["📊 Visão Geral", "🗺 Mapa", "📍 Precisão GPS", "🎯 Raio do Sistema",
+    "📶 Rede & Operadora", "🛰 Qualidade GPS", "🚗 Movimento", "🔋 Bateria", "⏱ Latência",
+    "📋 Dados & Export", "❓ Como Usar"])
 
 with abas[0]: g.aba_visao_geral(resultados, df_ref, ref_nome, raios)
 with abas[1]: g.aba_mapa(resultados, df_ref, ref_nome)
 with abas[2]: g.aba_precisao(resultados, raios)
-with abas[3]: g.aba_rede(resultados, df_ref, ref_nome, comparacao, dados)
-with abas[4]: g.aba_qualidade_gps(df_ref, ref_nome, comparacao, dados)
-with abas[5]: g.aba_movimento(df_ref, ref_nome, comparacao, dados)
-with abas[6]: g.aba_bateria(df_ref, ref_nome, comparacao, dados)
-with abas[7]: g.aba_latencia(df_ref, ref_nome, comparacao, dados)
-with abas[9]: render_ajuda()
+with abas[3]: g.aba_raio_sistema(resultados)
+with abas[4]: g.aba_rede(resultados, df_ref, ref_nome, comparacao, dados)
+with abas[5]: g.aba_qualidade_gps(df_ref, ref_nome, comparacao, dados)
+with abas[6]: g.aba_movimento(df_ref, ref_nome, comparacao, dados)
+with abas[7]: g.aba_bateria(df_ref, ref_nome, comparacao, dados)
+with abas[8]: g.aba_latencia(df_ref, ref_nome, comparacao, dados)
+with abas[10]: render_ajuda()
 
-with abas[8]:
+with abas[9]:
     sec("Exportar Análise Completa")
     st.caption("Excel com Resumo, dados sincronizados por equipamento e consolidado Rede & Bateria.")
     df_resumo = st.session_state.get("df_resumo")
