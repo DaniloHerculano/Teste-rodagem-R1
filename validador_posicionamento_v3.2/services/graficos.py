@@ -28,7 +28,7 @@ def aba_visao_geral(resultados, df_ref, ref_nome, raios):
         d = df["distancia_km"].dropna()
         if len(d) == 0:
             continue
-        linhas.append({
+        linha = {
             "Equipamento": nome, "Sincronizações": len(d),
             f"% ≤{raio1:.1f}km": round((d <= raio1).mean() * 100, 1),
             f"% ≤{raio2:.1f}km": round((d <= raio2).mean() * 100, 1),
@@ -37,7 +37,12 @@ def aba_visao_geral(resultados, df_ref, ref_nome, raios):
             "Erro Máx (km)": round(d.max(), 3),
             "Erro Mín (km)": round(d.min(), 3),
             "Mediana (km)": round(d.median(), 3),
-        })
+        }
+        if "dentro_raio" in df.columns:
+            val = df.dropna(subset=["dentro_raio"])
+            if len(val) > 0:
+                linha["% no Raio do Sistema"] = round(val["dentro_raio"].mean() * 100, 1)
+        linhas.append(linha)
 
     df_resumo = pd.DataFrame(linhas) if linhas else None
     if df_resumo is not None:
@@ -84,52 +89,86 @@ def aba_visao_geral(resultados, df_ref, ref_nome, raios):
 # ══════════════════════════════════════════════════════════════════════════════
 def aba_mapa(resultados, df_ref, ref_nome):
     sec("Mapa Comparativo de Posições")
-    st.caption("🔵 Referência (GPS Real) · pontos coloridos = comparados · "
-               "linhas = erro entre pontos sincronizados")
+    st.caption("Referência (GPS Real) + amostras testadas · "
+               "linhas = erro entre pontos sincronizados · passe o mouse para ver erro, posição e horário")
 
-    fig = go.Figure()
     if not {"latitude", "longitude"}.issubset(df_ref.columns):
         st.info("📄 O mapa precisa de posição (latitude/longitude), que vem do **XLS** "
                 "(relatório de posição). Suba o XLS da referência para visualizar o mapa.")
         return
+
+    # Controles
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        mostrar = st.checkbox("Mostrar linhas de erro", value=True)
+    with c2:
+        formato = st.selectbox(
+            "Formato dos marcadores das amostras",
+            ["circle", "marker", "square", "diamond", "triangle"],
+            format_func=lambda s: {
+                "circle": "● Círculo", "marker": "📍 Pino", "square": "■ Quadrado",
+                "diamond": "◆ Losango", "triangle": "▲ Triângulo"}.get(s, s),
+            help="A referência sempre usa círculo azul. Se um formato não aparecer, escolha outro."
+        )
+
+    fig = go.Figure()
+
+    # Referência
     df_ref_v = df_ref.dropna(subset=["latitude", "longitude"])
-    fig.add_trace(go.Scattermapbox(
+    ref_dt = (df_ref_v["datetime_module"].dt.strftime("%d/%m/%Y %H:%M:%S")
+              if "datetime_module" in df_ref_v.columns else pd.Series([""] * len(df_ref_v)))
+    fig.add_trace(go.Scattermap(
         lat=df_ref_v["latitude"], lon=df_ref_v["longitude"], mode="markers",
-        marker=dict(size=7, color="#2477b3"), name=f"REF: {ref_nome}",
-        text=df_ref_v.get("datetime_module", pd.Series()).astype(str),
-        hovertemplate="<b>Referência</b><br>%{text}<br>%{lat:.5f}, %{lon:.5f}<extra></extra>"))
+        marker=dict(size=8, color="#2477b3", symbol="circle"),
+        name=f"REF · {ref_nome}",
+        customdata=list(ref_dt),
+        hovertemplate="<b>Referência (GPS Real)</b><br>"
+                      "%{lat:.5f}, %{lon:.5f}<br>%{customdata}<extra></extra>"))
 
-    mostrar = st.checkbox("Mostrar linhas de erro", value=True)
-
+    # Amostras testadas
     for i, (nome, dfs) in enumerate(resultados.items()):
         if len(dfs) == 0 or not {"lat_comp", "lon_comp"}.issubset(dfs.columns):
             continue
         cor = PALETA[(i + 1) % len(PALETA)]
-        dfv = dfs.dropna(subset=["lat_comp", "lon_comp"])
+        dfv = dfs.dropna(subset=["lat_comp", "lon_comp"]).copy()
         if len(dfv) == 0:
             continue
-        fig.add_trace(go.Scattermapbox(
+        # data/hora da amostra
+        if "horario_comp" in dfv.columns:
+            dt_txt = pd.to_datetime(dfv["horario_comp"]).dt.strftime("%d/%m/%Y %H:%M:%S")
+        else:
+            dt_txt = pd.Series([""] * len(dfv), index=dfv.index)
+        erro_txt = [f"{d:.3f} km" if pd.notna(d) else "—" for d in dfv["distancia_km"]]
+        customdata = list(zip(erro_txt, list(dt_txt)))
+        fig.add_trace(go.Scattermap(
             lat=dfv["lat_comp"], lon=dfv["lon_comp"], mode="markers",
-            marker=dict(size=8, color=cor), name=nome,
-            text=[f"{d:.2f} km" if pd.notna(d) else "" for d in dfv["distancia_km"]],
-            hovertemplate="<b>" + nome + "</b><br>Erro: %{text}<br>%{lat:.5f}, %{lon:.5f}<extra></extra>"))
+            marker=dict(size=11, color=cor, symbol=formato),
+            name=nome,
+            customdata=customdata,
+            hovertemplate="<b>" + nome + "</b><br>"
+                          "Erro: %{customdata[0]}<br>"
+                          "%{lat:.5f}, %{lon:.5f}<br>"
+                          "%{customdata[1]}<extra></extra>"))
         if mostrar:
             lats, lons = [], []
             for _, r in dfv.iterrows():
                 lats += [r["lat_ref"], r["lat_comp"], None]
                 lons += [r["lon_ref"], r["lon_comp"], None]
-            fig.add_trace(go.Scattermapbox(
+            fig.add_trace(go.Scattermap(
                 lat=lats, lon=lons, mode="lines", line=dict(width=1, color=cor),
                 opacity=0.35, name=f"erro {nome}", showlegend=False, hoverinfo="skip"))
 
     clat = df_ref_v["latitude"].mean() if len(df_ref_v) else -15.7
     clon = df_ref_v["longitude"].mean() if len(df_ref_v) else -47.9
     fig.update_layout(
-        mapbox=dict(style="carto-positron", center=dict(lat=clat, lon=clon), zoom=11),
-        margin=dict(l=0, r=0, t=0, b=0), height=560, paper_bgcolor="#ffffff",
-        legend=dict(bgcolor="rgba(255,255,255,.85)", font=dict(color="#1f2a36")),
+        map=dict(style="carto-positron", center=dict(lat=clat, lon=clon), zoom=11),
+        margin=dict(l=0, r=0, t=48, b=0), height=580, paper_bgcolor="#ffffff",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                    bgcolor="rgba(255,255,255,.9)", bordercolor="#dce4ee", borderwidth=1,
+                    font=dict(color="#1f2a36", size=11)),
         font=dict(family="Barlow, sans-serif", color="#1f2a36"))
-    st.plotly_chart(fig, use_container_width=True, key="mapa_principal")
+    st.plotly_chart(fig, use_container_width=True, key="mapa_principal",
+                    config={"modeBarButtonsToRemove": ["lasso2d", "select2d"]})
 
     pts = []
     for nome, dfs in resultados.items():
@@ -141,8 +180,8 @@ def aba_mapa(resultados, df_ref, ref_nome):
     if pts:
         sec("Mapa de Calor — Concentração de Erros")
         dfh = pd.DataFrame(pts)
-        figh = px.density_mapbox(dfh, lat="lat", lon="lon", z="erro", radius=20,
-            center=dict(lat=clat, lon=clon), zoom=10, mapbox_style="carto-positron",
+        figh = px.density_map(dfh, lat="lat", lon="lon", z="erro", radius=20,
+            center=dict(lat=clat, lon=clon), zoom=10, map_style="carto-positron",
             color_continuous_scale=["#1f8b4c", "#e08a1e", "#dd0933"])
         figh.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=480,
             paper_bgcolor="#ffffff", font=dict(family="Barlow, sans-serif", color="#1f2a36"))
@@ -488,3 +527,76 @@ def aba_latencia(df_ref, ref_nome, comparacao, dados):
         item = next((d for d in dados if d["arquivo"] == nome), None)
         if item:
             _lat_um(item["df"], nome, kid=f"c{ci}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+def aba_raio_sistema(resultados):
+    """Valida a distância medida contra o raio de incerteza do próprio sistema (KML)."""
+    from services.analise import resumo_raio
+    sec("Validação contra o Raio do Sistema (KML)")
+    st.caption("Compara a distância medida (referência × amostra) com o raio de incerteza "
+               "que o próprio sistema PST calcula para cada posição estimada. "
+               "Indica o % de pontos em que a posição real caiu dentro do raio prometido pelo sistema.")
+
+    algum = False
+    for ci, (nome, df) in enumerate(resultados.items()):
+        if len(df) == 0 or "dentro_raio" not in df.columns:
+            continue
+        rr = resumo_raio(df)
+        if rr is None:
+            continue
+        algum = True
+        cc = "green" if rr["pct_dentro"] >= 90 else ("amber" if rr["pct_dentro"] >= 70 else "")
+        with st.expander(f"🎯 {nome} · {rr['pct_dentro']}% dentro do raio do sistema",
+                         expanded=(ci == 0 or not algum)):
+            grid(
+                tile("Pontos avaliados", f"{rr['pontos']:,}", cc="blue"),
+                tile("Dentro do raio", f"{rr['dentro']:,}", cc="green"),
+                tile("% Dentro do raio", f"{rr['pct_dentro']}%", cc=cc),
+                tile("Raio médio (sistema)", f"{rr['raio_medio']:.3f} km"),
+                tile("Raio mín–máx", f"{rr['raio_min']:.2f}–{rr['raio_max']:.2f} km"),
+            )
+            val = df.dropna(subset=["dentro_raio", "distancia_km", "raio_km"]).copy()
+
+            cL, cR = st.columns(2)
+            with cL:
+                dentro = int(val["dentro_raio"].sum())
+                fora = len(val) - dentro
+                fig = go.Figure(go.Pie(
+                    labels=["Dentro do raio", "Fora do raio"], values=[dentro, fora],
+                    hole=0.55, marker=dict(colors=["#1f8b4c", SR_RED])))
+                fig.update_layout(title="Posições dentro × fora do raio do sistema")
+                st.plotly_chart(aplica_tema(fig), use_container_width=True, key=f"raio_pie_{ci}")
+            with cR:
+                # Distância medida vs raio do sistema, ao longo do tempo
+                if "horario_comp" in val.columns:
+                    vs = val.sort_values("horario_comp")
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=vs["horario_comp"], y=vs["raio_km"],
+                        name="Raio do sistema", mode="lines", line=dict(color="#2477b3", width=1.5),
+                        fill="tozeroy", fillcolor="rgba(36,119,179,.12)"))
+                    fig.add_trace(go.Scatter(x=vs["horario_comp"], y=vs["distancia_km"],
+                        name="Distância medida", mode="markers",
+                        marker=dict(size=5, color=SR_RED)))
+                    fig.update_layout(title="Distância medida × Raio do sistema")
+                    st.plotly_chart(aplica_tema(fig, 300), use_container_width=True, key=f"raio_ts_{ci}")
+
+            st.markdown("**Pontos que ficaram fora do raio do sistema (maiores excedentes):**")
+            fora_df = val[~val["dentro_raio"]].copy()
+            if len(fora_df) > 0:
+                fora_df["excedente_km"] = (fora_df["distancia_km"] - fora_df["raio_km"]).round(3)
+                cols = [c for c in ["horario_comp", "distancia_km", "raio_km", "excedente_km", "endereco_comp"]
+                        if c in fora_df.columns]
+                tab = fora_df.nlargest(min(8, len(fora_df)), "excedente_km")[cols].copy()
+                ren = {"horario_comp": "Horário", "distancia_km": "Distância (km)",
+                       "raio_km": "Raio sistema (km)", "excedente_km": "Excedente (km)",
+                       "endereco_comp": "Endereço estimado"}
+                tab.columns = [ren.get(c, c) for c in tab.columns]
+                st.dataframe(tab, use_container_width=True, hide_index=True)
+            else:
+                st.success("Todas as posições avaliadas ficaram dentro do raio do sistema.")
+
+    if not algum:
+        st.info("📄 Esta análise requer o arquivo **KML** (extraído do portal SSO/PST), que "
+                "contém o raio de incerteza de cada posição estimada. Suba o KML dos "
+                "equipamentos com posição estimada — junto do XLS de referência — para validar "
+                "contra o raio do sistema. O KML deve ter o mesmo nome do CSV/XLS, mudando só a extensão.")
