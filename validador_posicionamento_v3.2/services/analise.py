@@ -32,12 +32,18 @@ def sincronizar(df_ref: pd.DataFrame, df_comp: pd.DataFrame, tol_min: int) -> pd
         r = ref.loc[idx]
         dist = calcular_distancia(r["latitude"], r["longitude"],
                                   row["latitude"], row["longitude"])
+        raio = row.get("raio_km", None)
+        dentro_raio = None
+        if raio is not None and pd.notna(raio) and dist is not None:
+            dentro_raio = bool(dist <= raio)
         resultados.append({
             "horario_ref": r["datetime_module"], "horario_comp": t,
             "dif_seg": abs((r["datetime_module"] - t).total_seconds()),
             "lat_ref": r["latitude"], "lon_ref": r["longitude"],
             "lat_comp": row["latitude"], "lon_comp": row["longitude"],
             "distancia_km": dist,
+            "raio_km": raio if (raio is not None and pd.notna(raio)) else None,
+            "dentro_raio": dentro_raio,
             "endereco_comp": row.get("endereco", None),
             "estimada_comp": row.get("_estimada_bool", None),
             "gps_valido_comp": row.get("_gps_bool", None),
@@ -45,6 +51,23 @@ def sincronizar(df_ref: pd.DataFrame, df_comp: pd.DataFrame, tol_min: int) -> pd
             "_operadora_comp": row.get("_operadora", "N/A"),
         })
     return pd.DataFrame(resultados)
+
+
+def resumo_raio(df: pd.DataFrame) -> dict:
+    """Métricas de validação contra o raio do sistema (KML)."""
+    if len(df) == 0 or "dentro_raio" not in df.columns:
+        return None
+    val = df.dropna(subset=["dentro_raio", "distancia_km", "raio_km"])
+    if len(val) == 0:
+        return None
+    return {
+        "pontos": len(val),
+        "dentro": int(val["dentro_raio"].sum()),
+        "pct_dentro": round(val["dentro_raio"].mean() * 100, 1),
+        "raio_medio": round(val["raio_km"].mean(), 3),
+        "raio_min": round(val["raio_km"].min(), 3),
+        "raio_max": round(val["raio_km"].max(), 3),
+    }
 
 
 def gerar_resumo(df: pd.DataFrame, raio1: float, raio2: float, raio3: float) -> dict:
