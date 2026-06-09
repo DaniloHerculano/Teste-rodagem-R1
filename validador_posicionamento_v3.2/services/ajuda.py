@@ -11,24 +11,25 @@ def render_ajuda():
     st.markdown("""
 Esta ferramenta compara a posição de rastreadores com **GPS ligado** (posição real)
 contra rastreadores com **GPS desligado** (posição estimada por antena de celular),
-medindo o quão distante a estimativa ficou da referência real.
+medindo o quão distante a estimativa ficou da referência real — e ainda valida se a
+posição caiu **dentro do raio de incerteza que o próprio sistema** informa.
 """)
 
-    # ── Os dois relatórios ──
-    st.markdown("#### 📑 Os dois relatórios de cada rastreador")
+    # ── Os três relatórios ──
+    st.markdown("#### 📑 Os relatórios de cada rastreador")
     st.markdown("""
-Cada equipamento gera **dois arquivos** que se complementam. Você pode subir os dois
-(análise completa) ou apenas um (análise parcial — o app usa o que tiver).
+Cada equipamento gera relatórios que se complementam. Você pode subir os três
+(análise completa) ou apenas os que tiver — o app usa o que estiver disponível.
 """)
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("""
 <div class="help-card">
 <div class="help-card-tag">.CSV</div>
 <div class="help-card-title">Log Técnico</div>
-<p>Traz os dados de engenharia do equipamento: rede (2G/3G/4G), operadora,
-satélites, DOP, latência, tipo de transmissão (UDP/SMS) e bateria bruta.</p>
+<p>Rede (2G/3G/4G), operadora, satélites, DOP, latência, transmissão (UDP/SMS)
+e bateria bruta.</p>
 <p><b>Onde baixar:</b><br>
 <a href="http://websites01.positronrt.cloud/firmware/index.php?tipoparametro=diversosplanform" target="_blank">
 Portal de Firmware / Diversos</a></p>
@@ -39,12 +40,22 @@ Portal de Firmware / Diversos</a></p>
 <div class="help-card">
 <div class="help-card-tag">.XLS</div>
 <div class="help-card-title">Relatório de Posição</div>
-<p>Traz a posição já convertida em latitude/longitude (real <b>ou</b> estimada),
-o endereço ("Próximo a:"), se a posição é estimada, a validade do GPS e a
-bateria em %.</p>
+<p>Latitude/longitude (real <b>ou</b> estimada), endereço ("Próximo a:"),
+posição estimada, validade do GPS e bateria em %.</p>
 <p><b>Onde baixar:</b><br>
-<a href="https://sso.pst.com.br/sso/" target="_blank">
-Portal SSO / PST</a></p>
+<a href="https://sso.pst.com.br/sso/" target="_blank">Portal SSO / PST</a></p>
+</div>
+""", unsafe_allow_html=True)
+    with c3:
+        st.markdown("""
+<div class="help-card">
+<div class="help-card-tag">.KML</div>
+<div class="help-card-title">Raio do Sistema</div>
+<p>Além da posição, traz o <b>raio de incerteza</b> que o próprio sistema calcula
+para cada posição estimada. Usado para validar o sistema PST.</p>
+<p><b>Onde baixar:</b><br>
+<a href="https://sso.pst.com.br/sso/" target="_blank">Portal SSO / PST</a> (mesmo
+local do XLS, opção exportar KML)</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -59,16 +70,51 @@ O **XLS** é gerado por um sistema que converte essa torre em latitude/longitude
 (a posição estimada com o endereço "Próximo a:"). É a fonte confiável de **onde** o
 equipamento está.
 
-Por isso o app **une os dois por horário**: usa a posição e a bateria do XLS, e
-enriquece cada ponto com os dados técnicos do CSV mais próximo no tempo.
+Por isso o app **une as fontes por horário**: usa a posição e a bateria do XLS,
+enriquece cada ponto com os dados técnicos do CSV, e associa o raio de incerteza
+do KML — tudo pelo horário mais próximo.
+""")
+
+    # ── O KML e o raio ──
+    st.markdown("#### 🎯 O KML e o raio do sistema")
+    st.markdown("""
+O **KML** (extraído do portal SSO/PST, no mesmo local do XLS) contém, para cada
+posição estimada, o **raio de incerteza** que o próprio sistema calcula — no arquivo
+aparece como, por exemplo, `Raio: 3012.0` (em metros; o app converte para km).
+
+Esse raio representa a área onde o sistema afirma que o rastreador deveria estar.
+A aba **Raio do Sistema** verifica, no mesmo horário já analisado, se a posição real
+(da referência) caiu **dentro desse raio** — informando o percentual de acerto do
+próprio sistema. É uma forma de validar o sistema de geolocalização atual.
+
+> Sem o KML, todas as demais análises continuam funcionando; apenas a validação
+> contra o raio do sistema fica indisponível.
+""")
+
+    # ── Exemplo de nomes ──
+    st.markdown("#### 📁 Como nomear os arquivos")
+    st.markdown("""
+Os arquivos de um mesmo rastreador devem ter o **mesmo nome**, mudando apenas a
+**extensão**. Assim o app agrupa as fontes automaticamente. Exemplo para um
+equipamento:
+""")
+    st.code(
+        "RI130_623721833_GNSS_1_29_05-01_06.csv   ← log técnico\n"
+        "RI130_623721833_GNSS_1_29_05-01_06.xls   ← posição\n"
+        "RI130_623721833_GNSS_1_29_05-01_06.kml   ← raio do sistema",
+        language="text")
+    st.markdown("""
+Repita o padrão para cada rastreador (mesmo nome-base, extensões `.csv`, `.xls`,
+`.kml`). Não é obrigatório ter as três — suba as que tiver.
 """)
 
     # ── Passo a passo ──
     st.markdown("#### 🚀 Passo a passo")
     st.markdown("""
-1. **Baixe os relatórios** de cada rastreador nos portais acima (CSV e/ou XLS).
-2. **Mantenha o mesmo nome** para o par CSV+XLS do mesmo equipamento — só muda a
-   extensão. O app os une automaticamente.
+1. **Baixe os relatórios** de cada rastreador (CSV no portal de firmware; XLS e KML
+   no portal SSO/PST).
+2. **Mantenha o mesmo nome** para os arquivos do mesmo equipamento — só muda a
+   extensão (`.csv`, `.xls`, `.kml`). O app os une automaticamente.
 3. **Suba os arquivos** na seção *Importar Arquivos*.
 4. **Escolha a referência** (o rastreador com GPS ligado, normalmente o RI130) e
    marque quais comparar.
@@ -86,6 +132,7 @@ enriquece cada ponto com os dados técnicos do CSV mais próximo no tempo.
 | **Visão Geral** | Resumo comparativo e erro médio | XLS (posição) |
 | **Mapa** | Pontos no mapa + linhas de erro + calor | XLS (posição) |
 | **Precisão GPS** | Erro em km, % por raio, endereços de maior erro | XLS (posição) |
+| **Raio do Sistema** | % de pontos dentro do raio que o sistema informa | KML + XLS |
 | **Rede & Operadora** | 2G/3G/4G, operadora, UDP/SMS | CSV (técnico) |
 | **Qualidade GPS** | Satélites, DOP, altitude | CSV (técnico) |
 | **Movimento** | Velocidade, direção, sensor | CSV + XLS |
