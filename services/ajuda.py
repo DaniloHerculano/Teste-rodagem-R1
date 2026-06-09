@@ -1,8 +1,31 @@
 """
 ajuda.py — Conteúdo da seção "Como usar" exibida na plataforma.
 """
+import base64
+from pathlib import Path
 import streamlit as st
 from services.ui import sec
+
+_ASSETS = Path(__file__).parent.parent / "assets"
+
+
+def _img_b64(nome: str) -> str:
+    caminho = _ASSETS / nome
+    if caminho.exists():
+        return base64.b64encode(caminho.read_bytes()).decode()
+    return ""
+
+
+def _print_passo(nome_arquivo: str, legenda: str):
+    """Exibe um print de passo com moldura e legenda."""
+    b64 = _img_b64(nome_arquivo)
+    if not b64:
+        return
+    st.markdown(
+        f'<div class="print-step">'
+        f'<img src="data:image/png;base64,{b64}" alt="{legenda}"/>'
+        f'<div class="print-cap">{legenda}</div></div>',
+        unsafe_allow_html=True)
 
 
 def render_ajuda():
@@ -59,8 +82,29 @@ local do XLS, opção exportar KML)</p>
 </div>
 """, unsafe_allow_html=True)
 
+    # ── Prints: onde extrair cada arquivo ──
+    st.markdown("#### 📸 Onde extrair cada arquivo (passo a passo)")
+
+    st.markdown("**CSV — Portal de Firmware (Positron):** "
+                "acesse **Upload de arquivo → Diversos → Planilhas de Testes** (1, 2), "
+                "escolha o tipo de consulta (3), informe o PIN e o período em UTC (4) e "
+                "clique em **Consultar** (5).")
+    _print_passo("config_websites01.png",
+                 "Portal de Firmware — geração da planilha CSV (Planilhas de Testes)")
+
+    st.markdown("**XLS e KML — Portal SSO/PST:** na busca (1), marque **Localização** e "
+                "**Posições estimadas** (2, 3), defina data/hora inicial e final e clique "
+                "em **Consultar** (4).")
+    _print_passo("config_sso.png",
+                 "Portal SSO/PST — filtro de consulta (Localização + Posições estimadas)")
+
+    st.markdown("Na aba **Resultado**, use **Exportar XLS** (1) para o relatório de posição "
+                "e **Exportar KML** (2) para obter o arquivo com o raio do sistema.")
+    _print_passo("download_xls_kml_sso.png",
+                 "Portal SSO/PST — exportação do XLS e do KML")
+
     # ── Por que dois ──
-    st.markdown("#### 🔗 Por que dois relatórios?")
+    st.markdown("#### 🔗 Por que vários relatórios?")
     st.markdown("""
 O **CSV** sabe *como* o equipamento está se comunicando (rede, sinal, bateria), mas
 quando o GPS está desligado ele **não traz a coordenada pronta** — só o código da
@@ -167,5 +211,9 @@ HELP_CSS = """
 .help-card p{font-size:.86rem;color:#3a4a57;margin:.4rem 0;}
 .help-card a{color:#dd0933;font-weight:600;text-decoration:none;}
 .help-card a:hover{text-decoration:underline;}
+.print-step{margin:.6rem 0 1.2rem 0;border:1px solid #dce4ee;border-radius:10px;
+  overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(44,57,70,.06);}
+.print-step img{width:100%;display:block;border-bottom:1px solid #eef2f7;}
+.print-cap{font-size:.74rem;color:#6b7f8f;padding:.5rem .8rem;background:#f9fafb;}
 </style>
 """
