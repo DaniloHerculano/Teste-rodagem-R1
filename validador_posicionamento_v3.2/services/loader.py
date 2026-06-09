@@ -77,6 +77,51 @@ def calcular_distancia(lat1, lon1, lat2, lon2) -> float:
 
 
 # ── Leitura crua ──────────────────────────────────────────────────────────────
+def ler_kml(arquivo) -> pd.DataFrame:
+    """
+    Extrai do KML (portal SSO/PST) os pontos que possuem 'Raio:' — o raio de
+    incerteza que o próprio sistema calcula para cada posição estimada.
+    Retorna DataFrame com datetime_module e raio_km (metros convertidos para km).
+    Placemarks de polígono (o círculo desenhado) não têm 'Raio:' e são ignorados.
+    """
+    # Ler bytes e decodificar tolerando latin1/utf-8
+    if hasattr(arquivo, "read"):
+        if hasattr(arquivo, "seek"):
+            arquivo.seek(0)
+        raw = arquivo.read()
+        if isinstance(raw, bytes):
+            try:
+                texto = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                texto = raw.decode("latin1", errors="replace")
+        else:
+            texto = raw
+    else:
+        try:
+            texto = open(arquivo, encoding="utf-8").read()
+        except UnicodeDecodeError:
+            texto = open(arquivo, encoding="latin1", errors="replace").read()
+
+    registros = []
+    for pm in re.findall(r"<Placemark>.*?</Placemark>", texto, re.DOTALL):
+        if "Raio:" not in pm:
+            continue
+        m_nome = re.search(r"<name>(.*?)</name>", pm, re.DOTALL)
+        m_raio = re.search(r"Raio:\s*([\d.]+)", pm)
+        if not (m_nome and m_raio):
+            continue
+        dt = pd.to_datetime(m_nome.group(1).strip(), dayfirst=True, errors="coerce")
+        if pd.isna(dt):
+            continue
+        raio_m = float(m_raio.group(1))
+        registros.append({"datetime_module": dt, "raio_km": round(raio_m / 1000.0, 4)})
+
+    df = pd.DataFrame(registros)
+    if len(df):
+        df = df.sort_values("datetime_module").reset_index(drop=True)
+    return df
+
+
 def ler_csv(arquivo) -> pd.DataFrame:
     df = pd.read_csv(arquivo, sep=";", low_memory=False)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -175,10 +220,23 @@ def fundir(df_xls: pd.DataFrame, df_csv: pd.DataFrame, tol_seg=60) -> pd.DataFra
                          tolerance=pd.Timedelta(seconds=tol_seg))
 
 
-def consolidar_equipamento(nome, csv_file, xls_file, tol_fusao=60) -> dict:
-    """Carrega e funde os arquivos de um equipamento. Posição: XLS > CSV."""
+def _anexar_raio_kml(df, df_kml, tol_seg=60):
+    """Casa o raio_km do KML a cada ponto por horário (vizinho mais próximo)."""
+    if df_kml is None or len(df_kml) == 0 or "datetime_module" not in df.columns:
+        return df
+    base = df.dropna(subset=["datetime_module"]).sort_values("datetime_module").copy()
+    kml = df_kml.dropna(subset=["datetime_module"]).sort_values("datetime_module").copy()
+    fundido = pd.merge_asof(base, kml[["datetime_module", "raio_km"]],
+                            on="datetime_module", direction="nearest",
+                            tolerance=pd.Timedelta(seconds=tol_seg))
+    return fundido
+
+
+def consolidar_equipamento(nome, csv_file, xls_file, kml_file=None, tol_fusao=60) -> dict:
+    """Carrega e funde os arquivos de um equipamento. Posição: XLS > CSV. Raio: KML."""
     df_csv = enriquecer_csv(ler_csv(csv_file)) if csv_file is not None else None
     df_xls = normalizar_xls(ler_xls(xls_file)) if xls_file is not None else None
+    df_kml = ler_kml(kml_file) if kml_file is not None else None
 
     if df_xls is not None:
         df = fundir(df_xls, df_csv, tol_seg=tol_fusao)
@@ -200,5 +258,14 @@ def consolidar_equipamento(nome, csv_file, xls_file, tol_fusao=60) -> dict:
     else:
         raise Exception(f"{nome}: nenhum arquivo válido.")
 
+    # Anexar raio do sistema (KML), se houver
+    tem_raio = False
+    if df_kml is not None and len(df_kml) > 0:
+        df = _anexar_raio_kml(df, df_kml, tol_seg=max(tol_fusao, 120))
+        tem_raio = "raio_km" in df.columns and df["raio_km"].notna().any()
+        if tem_raio:
+            fonte = fonte + "+KML"
+
     return {"arquivo": nome, "pin": extrair_pin(nome), "modelo": extrair_modelo(nome),
-            "tipo": tipo, "fonte": fonte, "registros": len(df), "df": df}
+            "tipo": tipo, "fonte": fonte, "registros": len(df),
+            "tem_raio": tem_raio, "df": df}
