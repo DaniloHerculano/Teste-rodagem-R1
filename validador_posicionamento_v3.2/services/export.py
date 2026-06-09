@@ -137,16 +137,15 @@ def gerar_excel(df_resumo, resultados: dict, dados: list,
         if len(df) == 0:
             continue
         ws3 = wb.create_sheet(f"Sync_{_nome_aba(nome)}"[:31])
-        # Selecionar colunas legíveis
-        cols = [c for c in ["horario_comp", "distancia_km", "lat_comp", "lon_comp",
-                            "_tech_comp", "_operadora_comp", "endereco_comp"] if c in df.columns]
+        cols = [c for c in ["horario_comp", "distancia_km", "raio_km", "dentro_raio",
+                            "lat_comp", "lon_comp", "_tech_comp", "_operadora_comp",
+                            "endereco_comp"] if c in df.columns]
         dfx = df[cols].copy()
         for c in dfx.columns:
             if "horario" in c:
                 dfx[c] = dfx[c].astype(str)
         _escreve_df(ws3, dfx)
         n = len(dfx)
-        # Linha: erro ao longo do tempo
         if "distancia_km" in dfx.columns:
             cdist = list(dfx.columns).index("distancia_km") + 1
             line = LineChart(); line.title = "Erro de Posição ao Longo do Tempo (km)"
