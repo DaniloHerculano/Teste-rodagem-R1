@@ -10,6 +10,9 @@ import streamlit as st
 _USUARIO = "validapst"
 _SENHA = "123456"
 
+# Versão corrente do sistema (exibida na tela de login)
+VERSAO = "0.6"
+
 
 def _logo_b64() -> str:
     caminho = Path(__file__).parent.parent / "assets" / "stoneridge_logo.png"
@@ -49,7 +52,7 @@ def _render_form() -> bool:
                  if b64 else "")
     st.markdown(
         f'<div class="login-card">{logo_html}'
-        f'<div class="login-title">Série B Rastreamento</div>'
+        f'<div class="login-title">Pósitron Rastreamento</div>'
         f'<div class="login-sub">Testes de Rodagem · Validação e Análise · Stoneridge Brasil</div>'
         f'<div class="login-strip"></div></div>',
         unsafe_allow_html=True)
@@ -66,7 +69,8 @@ def _render_form() -> bool:
         else:
             st.error("Credenciais inválidas. Verifique usuário e senha.")
 
-    st.markdown('<div class="login-sec">🔐 Acesso restrito — uso interno Stoneridge</div>',
+    st.markdown(f'<div class="login-sec">🔐 Acesso restrito — uso interno Stoneridge'
+                f'<br><br>Versão {VERSAO}</div>',
                 unsafe_allow_html=True)
     return False
 
