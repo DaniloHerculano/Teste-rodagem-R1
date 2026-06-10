@@ -16,13 +16,15 @@ def _img_b64(nome: str) -> str:
     return ""
 
 
-def _print_passo(nome_arquivo: str, legenda: str):
-    """Exibe um print de passo com moldura e legenda."""
+def _print_passo(nome_arquivo: str, legenda: str, estreito: bool = False):
+    """Exibe um print de passo com moldura e legenda.
+    estreito=True para imagens verticais/quadradas (limita largura e centraliza)."""
     b64 = _img_b64(nome_arquivo)
     if not b64:
         return
+    classe = "print-step print-step-narrow" if estreito else "print-step"
     st.markdown(
-        f'<div class="print-step">'
+        f'<div class="{classe}">'
         f'<img src="data:image/png;base64,{b64}" alt="{legenda}"/>'
         f'<div class="print-cap">{legenda}</div></div>',
         unsafe_allow_html=True)
@@ -85,14 +87,17 @@ local do XLS, opção exportar KML)</p>
     # ── Prints: onde extrair cada arquivo ──
     st.markdown("#### 📸 Onde extrair cada arquivo (passo a passo)")
 
-    st.markdown("**CSV — Portal de Firmware (Positron):** "
+    st.markdown("**CSV — [Portal de Firmware (Positron)]"
+                "(http://websites01.positronrt.cloud/firmware/index.php?tipoparametro=diversosplanform):** "
                 "acesse **Upload de arquivo → Diversos → Planilhas de Testes** (1, 2), "
-                "escolha o tipo de consulta (3), informe o PIN e o período em UTC (4) e "
-                "clique em **Consultar** (5).")
+                "escolha o tipo de consulta **\"Consulta carga posições e status\"** (3), "
+                "informe o PIN e o período em UTC (4) e clique em **Consultar** (5).")
     _print_passo("config_websites01.png",
-                 "Portal de Firmware — geração da planilha CSV (Planilhas de Testes)")
+                 "Portal de Firmware — geração da planilha CSV (Planilhas de Testes)",
+                 estreito=True)
 
-    st.markdown("**XLS e KML — Portal SSO/PST:** na busca (1), marque **Localização** e "
+    st.markdown("**XLS e KML — [Portal SSO/PST](https://sso.pst.com.br/sso/):** "
+                "na busca (1), marque **Localização** e "
                 "**Posições estimadas** (2, 3), defina data/hora inicial e final e clique "
                 "em **Consultar** (4).")
     _print_passo("config_sso.png",
@@ -214,6 +219,9 @@ HELP_CSS = """
 .print-step{margin:.6rem 0 1.2rem 0;border:1px solid #dce4ee;border-radius:10px;
   overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(44,57,70,.06);}
 .print-step img{width:100%;display:block;border-bottom:1px solid #eef2f7;}
+.print-step-narrow img{max-width:380px;width:100%;margin:0 auto;border-bottom:none;}
+.print-step-narrow{text-align:center;}
+.print-step-narrow .print-cap{border-top:1px solid #eef2f7;text-align:left;}
 .print-cap{font-size:.74rem;color:#6b7f8f;padding:.5rem .8rem;background:#f9fafb;}
 </style>
 """
